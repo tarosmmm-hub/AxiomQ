@@ -11,7 +11,7 @@ completa huecos y E2E, no es el primer momento en que se testea.
 
 `ARCHITECTURE.md`, ADRs, `METRICS.md`, `RISKS.md`, este plan.
 
-## Fase 1 — Infraestructura + base de datos + auth
+## Fase 1 — Infraestructura + base de datos + auth ✅ (ver `docs/CHANGELOG.md`)
 
 - Monorepo: workspace `uv` (`quant_engine`, `backend`, `workers`), `pnpm` para `frontend`.
 - Docker Compose: postgres, redis, backend, worker, frontend, mailpit. Dockerfiles non-root.
@@ -19,7 +19,7 @@ completa huecos y E2E, no es el primer momento en que se testea.
 - Ruff, mypy, ESLint, TS strict, import-linter; GitHub Actions (lint + unit + integración + migraciones).
 - Backend: app factory, settings, logging JSON, errores problem+json, healthchecks.
 - Alembic: migración inicial con `users`, `workspaces`, `workspace_members`, `sessions`,
-  `password_reset_tokens`, `plans`, `plan_entitlements`, `subscriptions`, `audit_log`,
+  `user_tokens` (reset de contraseña y verificación de email), `plans`, `plan_entitlements`, `subscriptions`, `audit_log`,
   `analytics_events`.
 - Módulos `identity`, `workspaces`, `billing` (entitlements), `analytics` (sink).
 - Frontend: layout, tema claro/oscuro, design tokens, páginas register/login/forgot/reset/profile.
@@ -34,6 +34,8 @@ completa huecos y E2E, no es el primer momento en que se testea.
 - Migración: `assets`, `datasets`, `market_data`, `corporate_actions`.
 - Job `data_import`, `DatabaseProvider`, endpoints de assets/datasets/barras.
 - Dataset sintético de desarrollo generado por script determinista y etiquetado `SYNTHETIC`.
+- Mercado chileno: calendario `XSGO`, activos IPSA de referencia (metadatos, sin precios),
+  `index_memberships` point-in-time, normalización de símbolos (`.SN` → local), formato CLP.
 - UI: gestor de datos (lista de datasets, proveniencia, insignia, vista de precio).
 - **Salida**: tests de validación (cada regla), de calendario (festivos, DST), de proveniencia, de
   import idempotente.

@@ -1,0 +1,26 @@
+[project]
+name = "axiomq-api"
+version = "0.1.0"
+description = "AxiomQ HTTP API (FastAPI)."
+requires-python = ">=3.11"
+dependencies = [
+    "axiomq-quant-engine",
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "pydantic>=2.8",
+    "pydantic-settings>=2.4",
+    "email-validator>=2.2",
+    "sqlalchemy>=2.0.32",
+    "psycopg[binary]>=3.2",
+    "alembic>=1.13",
+    "argon2-cffi>=23.1",
+    "redis>=5.0",
+    "dramatiq[redis]>=1.17",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/axiomq_api"]

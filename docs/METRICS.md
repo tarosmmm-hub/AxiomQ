@@ -10,7 +10,8 @@ los tests referencian estas definiciones. Si el código y este documento discrep
   barra (antes de cualquier fill, que como pronto ocurre en la barra 1).
 - **Retornos por periodo** (simples): `r_t = E_t / E_{t−1} − 1`, `t = 1..T`, `n = T`.
 - **Periodos por año** `P`: derivado del calendario del activo y el timeframe. `1D` en mercado de
-  EE. UU. → `P = 252`; activos 24/7 con `1D` → `P = 365`. Se guarda en el experimento.
+  EE. UU. → `P = 252`; activos 24/7 con `1D` → `P = 365`; Bolsa de Santiago (`XSGO`) → número medio de sesiones por año
+  del calendario en el rango del backtest (redondeado a entero y guardado). Se guarda en el experimento.
 - **Años transcurridos** `Y = (ts_T − ts_0) / 365.25 días` (tiempo calendario, no número de barras).
 - **Tasa libre de riesgo** `rf` anual, parámetro del experimento (por defecto `0`), convertida a
   por-periodo: `rf_p = (1 + rf)^(1/P) − 1`.

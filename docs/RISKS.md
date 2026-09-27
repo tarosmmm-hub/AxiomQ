@@ -11,7 +11,7 @@
 | R5 | **Ejecución de código de usuario** si se adelanta sin sandbox | Crítico (RCE) | Fuera del MVP; sólo spec declarativo sin evaluación dinámica; diseño de sandbox en ADR-0002 |
 | R6 | **Abuso de cómputo** (FREE lanzando backtests enormes) | Coste/disponibilidad | Entitlements, rate limit, límites de rango/símbolos por plan, timeouts por job, colas separadas |
 | R7 | **Fuga entre tenants** | Crítico (seguridad) | Filtro por workspace en repositorios, tests de aislamiento, IDs no secuenciales |
-| R8 | **Zonas horarias y calendarios** (DST, festivos, medias sesiones) | Alto | UTC en BD, `exchange_calendars`, tests con fechas de DST y festivos |
+| R8 | **Zonas horarias y calendarios** (DST de EE. UU. y de Chile, festivos, medias sesiones) | Alto | UTC en BD, `exchange_calendars`, tests con fechas de DST y festivos |
 | R9 | **Sobreajuste presentado como éxito** | Producto/ético | Diagnostics (`MANY_TRIALS`, `LOW_TRADE_COUNT`, `SHORT_SAMPLE`), disclaimers, comparación neutral |
 | R10 | **Crecimiento de `market_data`/equity points** con intradía | Rendimiento | Particionado o TimescaleDB cuando llegue intradía; PK diseñada para ello |
 | R11 | **Deriva de contrato frontend/backend** | Mantenibilidad | Cliente TS generado desde OpenAPI; CI falla si el cliente no está regenerado |
@@ -34,12 +34,15 @@ Cada una tiene un ADR con alternativas y consecuencias.
 | Tenancy | Todo recurso pertenece a un workspace desde el día 1 | [0008](adr/0008-workspace-tenancy.md) |
 | Arquitectura del motor | Event-driven (barra a barra), no vectorizado | [0009](adr/0009-event-driven-engine.md) |
 
-## 3. Preguntas abiertas para el product owner
+## 3. Preguntas para el product owner
+
+Resueltas el 2026-09-27: se aceptan todas las propuestas por defecto y se añade el mercado chileno
+(acciones del universo IPSA). El producto se llama **AxiomQ**.
 
 | # | Pregunta | Propuesta por defecto |
 |---|---|---|
-| Q1 | ¿Qué fuente de datos **reales** usaremos (dev y paper trading)? Opciones: CSV importados manualmente (p. ej. Stooq, uso personal), Tiingo, Polygon, Alpaca (datos + futuro broker) | Empezar con CSV importado por el operador con manifiesto; evaluar Alpaca para paper (datos + ruta natural a live) |
-| Q2 | ¿Mercado inicial? | Acciones/ETFs EE. UU., diario |
-| Q3 | Idioma de la UI y la documentación | Documentación en español, código e identificadores en inglés, UI en inglés con i18n preparado |
-| Q4 | ¿Verificación de email obligatoria para usar el producto? | Obligatoria antes de lanzar backtests (anti-abuso); flag configurable |
-| Q5 | Límites FREE adicionales (rango máximo, nº de paper accounts) | `backtests_per_day=5`, `paper_accounts=1`, rango ilimitado en diario |
+| Q1 | ¿Qué fuente de datos **reales** usaremos (dev y paper trading)? Opciones: CSV importados manualmente (p. ej. Stooq, uso personal), Tiingo, Polygon, Alpaca (datos + futuro broker) | ✅ Empezar con CSV importado por el operador con manifiesto; evaluar Alpaca para paper en EE. UU. (datos + ruta natural a live). ⚠️ Alpaca no cubre Chile: para paper trading en XSGO hará falta otro proveedor (p. ej. EODHD o datos de la Bolsa de Santiago); hasta entonces el paper chileno usa feed `REPLAY` etiquetado |
+| Q2 | ¿Mercado inicial? | ✅ Acciones/ETFs EE. UU. + acciones chilenas (IPSA), diario |
+| Q3 | Idioma de la UI y la documentación | ✅ Documentación en español, código e identificadores en inglés, UI en inglés con i18n preparado |
+| Q4 | ¿Verificación de email obligatoria para usar el producto? | ✅ Obligatoria antes de lanzar backtests (anti-abuso); flag configurable |
+| Q5 | Límites FREE adicionales (rango máximo, nº de paper accounts) | ✅ `backtests_per_day=5`, `paper_accounts=1`, rango ilimitado en diario |

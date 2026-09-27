@@ -1,0 +1,95 @@
+# Development stack. Usage (from the repository root): make dev
+name: axiomq
+
+x-python: &python
+  build:
+    context: ../..
+    dockerfile: infra/docker/python.Dockerfile
+    target: dev
+  env_file:
+    - path: ../../.env
+      required: false
+  environment: &python-env
+    AXIOMQ_ENV: development
+    AXIOMQ_DATABASE_URL: postgresql+psycopg://axiomq:axiomq@postgres:5432/axiomq
+    AXIOMQ_REDIS_URL: redis://redis:6379/0
+    AXIOMQ_EMAIL_BACKEND: smtp
+    AXIOMQ_SMTP_HOST: mailpit
+    AXIOMQ_SMTP_PORT: "1025"
+    AXIOMQ_COOKIE_SECURE: "false"
+    AXIOMQ_FRONTEND_URL: http://localhost:3000
+    AXIOMQ_LOG_JSON: "false"
+  volumes:
+    - ../../quant_engine/src:/app/quant_engine/src
+    - ../../backend/src:/app/backend/src
+    - ../../backend/migrations:/app/backend/migrations
+    - ../../workers/src:/app/workers/src
+  depends_on:
+    postgres: { condition: service_healthy }
+    redis: { condition: service_healthy }
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: axiomq
+      POSTGRES_PASSWORD: axiomq
+      POSTGRES_DB: axiomq
+    ports: ["5432:5432"]
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U axiomq -d axiomq"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    ports: ["6379:6379"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  mailpit:
+    image: axllent/mailpit:latest
+    ports:
+      - "8025:8025" # web UI: read verification / reset emails in development
+      - "1025:1025"
+
+  migrate:
+    <<: *python
+    command: ["alembic", "upgrade", "head"]
+    restart: "no"
+
+  api:
+    <<: *python
+    command: ["uvicorn", "axiomq_api.asgi:app", "--host", "0.0.0.0", "--port", "8000", "--reload",
+              "--reload-dir", "/app/backend/src", "--reload-dir", "/app/quant_engine/src"]
+    ports: ["8000:8000"]
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+
+  worker:
+    <<: *python
+    command: ["dramatiq", "axiomq_workers.main", "--processes", "1", "--threads", "2",
+              "--watch", "/app/workers/src"]
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+
+  web:
+    build:
+      context: ../..
+      dockerfile: infra/docker/frontend.Dockerfile
+      target: dev
+    environment:
+      AXIOMQ_API_URL: http://api:8000
+      WATCHPACK_POLLING: "true"
+    ports: ["3000:3000"]
+    volumes:
+      - ../../frontend/src:/app/src
+    depends_on: [api]
+
+volumes:
+  pgdata:

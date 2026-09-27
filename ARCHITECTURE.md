@@ -1,6 +1,7 @@
-# QuantLab — Arquitectura
+# AxiomQ — Arquitectura
 
-> Estado: **propuesta (Fase 0)**. Este documento define la arquitectura objetivo del MVP y los
+> Estado: **Fase 1 implementada** (infraestructura, BD, auth, planes). Este documento define la
+> arquitectura objetivo del MVP y los
 > puntos de extensión para después del MVP. Las decisiones difíciles de revertir están
 > registradas como ADRs en [`docs/adr/`](docs/adr/). Los riesgos y el plan por fases están en
 > [`docs/RISKS.md`](docs/RISKS.md) y [`docs/IMPLEMENTATION_PLAN.md`](docs/IMPLEMENTATION_PLAN.md).
@@ -14,7 +15,7 @@ Prioridad de ingeniería, en este orden: **CORRECTNESS > SECURITY > MAINTAINABIL
 
 ### 1.1 Qué es el producto
 
-QuantLab es infraestructura cuantitativa como servicio: el usuario define una estrategia, la
+AxiomQ es infraestructura cuantitativa como servicio: el usuario define una estrategia, la
 ejecuta contra datos históricos (backtest) o contra datos nuevos sin dinero real (paper trading),
 guarda cada ejecución como un experimento reproducible y analiza/compara resultados.
 
@@ -65,10 +66,10 @@ Fuera (detrás de interfaces, documentado cómo se incorpora):
 
 | Tema | Supuesto adoptado | Reversible |
 |---|---|---|
-| Clase de activo MVP | Acciones/ETFs de EE. UU., barras diarias (`1D`). El modelo soporta cripto (calendario 24/7) sin cambios de esquema | Sí |
+| Clase de activo MVP | Acciones/ETFs de EE. UU. **y acciones chilenas (universo IPSA, Bolsa de Santiago)**, barras diarias (`1D`). El modelo soporta cripto (calendario 24/7) sin cambios de esquema. Ver §6.1 | Sí |
 | Fuente de datos real | No hay aún. Se entrega `HistoricalCSVProvider` con proveniencia obligatoria y un dataset **sintético** etiquetado para tests/dev. Ver pregunta abierta en `docs/RISKS.md` | Sí |
 | "Paper trading recibe nuevos datos" | Requiere un feed de datos reales incrementales. Sin proveedor, el feed disponible es *replay* y se etiqueta como **SIMULATED FEED** | Sí |
-| Moneda | Una moneda por portfolio (USD en MVP). Sin FX | Medio |
+| Moneda | Una moneda por portfolio (USD o CLP en MVP). Un portfolio sólo opera activos de su moneda; sin FX | Medio |
 | Apalancamiento | Cuenta cash, leverage máximo 1.0, sólo largos | Sí (la interfaz de riesgo ya lo valida) |
 | Fracciones de acción | Desactivadas por defecto (cantidad entera), configurable por experimento | Sí |
 
@@ -132,7 +133,7 @@ ejecutarla en un sandbox en el futuro y reutilizarla idéntica en backtest y pap
 │   ├── src/lib/api/          cliente generado desde OpenAPI (openapi-typescript) + fetch wrapper
 │   └── src/lib/format/       formateo numérico/fechas (una sola fuente de verdad)
 ├── backend/
-│   ├── src/quantlab_api/
+│   ├── src/axiomq_api/
 │   │   ├── main.py           app factory, middlewares
 │   │   ├── core/             config (pydantic-settings), seguridad, logging, errores
 │   │   ├── db/               engine, session, base, modelos SQLAlchemy
@@ -154,7 +155,7 @@ ejecutarla en un sandbox en el futuro y reutilizarla idéntica en backtest y pap
 │   │   └── types.py          tipos de dominio compartidos (inmutables)
 │   └── tests/                unit, property-based (Hypothesis), golden
 ├── workers/
-│   └── src/quantlab_workers/ actores (backtest, paper tick, data import), scheduler
+│   └── src/axiomq_workers/ actores (backtest, paper tick, data import), scheduler
 ├── data/
 │   ├── fixtures/             datasets pequeños para tests (sintéticos, etiquetados)
 │   └── README.md             procedencia y licencia de cada dataset
@@ -342,6 +343,7 @@ como benchmark (ignoraría costes, dividendos y la fecha de primera ejecución).
 | `MANY_TRIALS` | nº de experimentos del mismo usuario sobre misma estrategia+dataset ≥ N (multiple testing) | warning |
 | `OPEN_POSITION_AT_END` | posición abierta al final | info |
 | `SIZE_REDUCED` | fill reducido por cash insuficiente | info |
+| `LOW_LIQUIDITY` | tamaño de orden > X % del volumen medio (relevante en acciones chilenas) | warning |
 | `METRIC_UNDEFINED` | una métrica devolvió `None` (motivo incluido) | info |
 
 Toda página de resultados muestra: *"Resultados simulados sobre datos históricos. No garantizan
@@ -380,6 +382,31 @@ class MarketDataProvider(Protocol):
 - Proveedores externos (Polygon, Alpaca, Tiingo…) = nueva clase que implementa el protocolo +
   job de importación. El motor no cambia.
 
+### 6.1 Mercados soportados en el MVP
+
+| Mercado | Calendario (`exchange_calendars`) | Zona horaria | Moneda | Periodos/año `1D` | Notas |
+|---|---|---|---|---|---|
+| EE. UU. (NYSE/NASDAQ/ARCA) | `XNYS` | `America/New_York` | USD | 252 | ETFs como SPY |
+| Chile (Bolsa de Santiago) | `XSGO` | `America/Santiago` | CLP | derivado del calendario (≈ 245–250) | Acciones del universo IPSA: `SQM-B`, `BSANTANDER`, `CHILE`, `FALABELLA`, `COPEC`, `CENCOSUD`, `ENELAM`… |
+
+Particularidades de Chile que el diseño cubre explícitamente:
+
+- **Moneda CLP sin decimales en la práctica**: el ledger en `Decimal` y `NUMERIC` no pierde
+  precisión; el formato de la UI usa `es-CL` (separador de miles `.`) para montos en CLP.
+- **Cambios de horario de Chile** (fechas de DST distintas a EE. UU. y modificadas por decreto en
+  años recientes): timestamps en UTC y conversión con la base IANA; tests con esas fechas.
+- **Composición del IPSA cambia en el tiempo** (revisiones periódicas): un universo "IPSA" se modela
+  como `index_memberships(index, asset, valid_from, valid_to)` point-in-time (Fase 2). Usar la
+  composición actual para backtests pasados activa `SURVIVORSHIP_RISK`.
+- **Liquidez menor** que en EE. UU.: `Diagnostic(LOW_LIQUIDITY)` cuando el tamaño de la orden supera
+  un % configurable del volumen medio; el modelo de slippage por defecto sigue siendo % fijo y el
+  aviso lo deja claro.
+- **Series de acciones** (`SQM-B`, `ANDINA-B`…): el símbolo local incluye la serie; se guarda
+  `symbol` local + `exchange = XSGO`, sin sufijos de proveedores (`.SN`), que se normalizan en la
+  ingesta.
+- **Fuente de datos**: no hay en el repo datos reales chilenos; se importan por CSV con manifiesto
+  (licencia) hasta elegir proveedor (ver `docs/RISKS.md`, Q1).
+
 **Datasets y proveniencia**: toda barra pertenece a un `dataset` con `data_kind ∈ {REAL_HISTORICAL,
 SYNTHETIC}` y `content_hash`. Un experimento guarda el `dataset_id` y el hash; los datasets son
 inmutables (una corrección crea un dataset nuevo). La UI muestra siempre la insignia del tipo de
@@ -414,7 +441,9 @@ lleva la insignia **SIMULATED FEED** y no se presenta como paper trading en tiem
 ## 8. Jobs y workers
 
 - Cola sobre Redis con **Dramatiq** ([ADR-0006](docs/adr/0006-job-queue.md)) detrás de una
-  interfaz `JobQueue` del backend (el backend no importa Dramatiq directamente fuera del adaptador).
+  interfaz `JobQueue` (`axiomq_api.jobs.ports`). Sólo `axiomq_api.jobs.dramatiq_queue` importa
+  Dramatiq y direcciona los mensajes por *nombre* de actor, así que la API nunca importa código de
+  los workers (contrato de `import-linter`).
 - Estado persistente en PostgreSQL (`jobs` / `backtests.status`: `QUEUED → RUNNING → SUCCEEDED |
   FAILED | CANCELLED`); Redis es transporte, no fuente de verdad.
 - Cada backtest corre con límite de tiempo, límite de memoria (proceso hijo con `resource.setrlimit`)
@@ -452,7 +481,10 @@ router), con tests de aislamiento entre tenants.
 
 ## 10. Base de datos
 
-PostgreSQL 16, migraciones **Alembic** (nada de `create_all` fuera de tests). IDs UUID generados en
+PostgreSQL 16, migraciones **Alembic** (nada de `create_all`; los tests también construyen el
+esquema desde las migraciones y verifican que modelos y migraciones no divergen). SQLAlchemy
+síncrono ([ADR-0010](docs/adr/0010-sync-sqlalchemy.md)). Enums como `VARCHAR` + `CHECK`. Los
+planes y sus entitlements son datos de referencia sembrados por migración. IDs UUID generados en
 la aplicación. Timestamps `timestamptz` en UTC. Importes y precios `NUMERIC(24,10)`.
 
 ### 10.1 Esquema lógico
@@ -465,7 +497,7 @@ erDiagram
   plans ||--o{ subscriptions : ""
   plans ||--o{ plan_entitlements : ""
   users ||--o{ sessions : ""
-  users ||--o{ password_reset_tokens : ""
+  users ||--o{ user_tokens : ""
   workspaces ||--o{ strategies : ""
   strategies ||--o{ strategy_versions : ""
   datasets ||--o{ market_data : ""
@@ -488,10 +520,10 @@ erDiagram
 | Tabla | Columnas clave | Notas |
 |---|---|---|
 | `users` | id, email (citext, unique), password_hash, display_name, email_verified_at, created_at | argon2id |
-| `workspaces` | id, name, kind (`PERSONAL`/`TEAM`), owner_id | personal creado en el registro |
+| `workspaces` | id, name, kind (`PERSONAL`/`TEAM`), owner_id, analytics_enabled | personal creado en el registro |
 | `workspace_members` | workspace_id, user_id, role (`OWNER`/`ADMIN`/`MEMBER`/`VIEWER`) | PK compuesta |
 | `sessions` | id, user_id, token_hash, created_at, expires_at, revoked_at, ip, user_agent | token opaco |
-| `password_reset_tokens` | id, user_id, token_hash, expires_at, used_at | un solo uso |
+| `user_tokens` | id, user_id, purpose (`PASSWORD_RESET`/`EMAIL_VERIFICATION`), token_hash, expires_at, used_at, revoked_at | un solo uso |
 | `plans` | id, code (`FREE`/`PRO`/`TEAM`), name | datos, no código |
 | `plan_entitlements` | plan_id, key, int_value, bool_value | p. ej. `backtests_per_day = 5`, `null` = ilimitado |
 | `subscriptions` | workspace_id, plan_id, status, provider, provider_customer_id, provider_subscription_id, current_period_end | listo para Stripe |
@@ -528,15 +560,21 @@ crea un experimento nuevo con `rerun_of` para no mutar historia.
 - Sesiones **opacas** en cookie `HttpOnly; Secure; SameSite=Lax`, token aleatorio de 256 bits,
   almacenado como hash SHA-256; rotación en login; revocación en logout y en cambio/reset de
   contraseña. Sin JWT en el navegador (revocación trivial, sin claves que filtrar).
-- Frontend y API bajo el mismo sitio (Next.js *rewrites* `/api/*` → backend) para que la cookie sea
-  first-party. CSRF: SameSite + cabecera obligatoria `X-QuantLab-CSRF` (double submit) en mutaciones.
+- Frontend y API bajo el mismo sitio (`frontend/src/proxy.ts` reenvía `/api/*` al backend, con la
+  URL leída en runtime) para que la cookie sea first-party. CSRF: SameSite + cabecera obligatoria `X-AxiomQ-CSRF` (double submit) en mutaciones.
 - Contraseñas: argon2id (`argon2-cffi`), longitud mínima 12, comprobación contra lista de
-  contraseñas comunes. Mensajes de error genéricos (sin enumeración de usuarios), también en reset.
+  contraseñas comunes. Mensajes de error genéricos (sin enumeración de usuarios) en login, reset
+  **y registro** (el registro responde siempre 202 y avisa por email si la cuenta ya existe; ver
+  ADR-0007).
 - Reset: token de un solo uso, 30 min, hash en BD, invalida todas las sesiones. Envío vía interfaz
   `EmailSender` (consola/Mailpit en dev, SMTP/proveedor en prod).
 - Rate limiting (Redis) en login, registro, reset y encolado de backtests.
 - Autorización por workspace en repositorios + tests de aislamiento entre tenants.
-- Cabeceras: CSP estricta, HSTS, `X-Content-Type-Options`, `frame-ancestors 'none'`.
+- Cabeceras: CSP estricta en la API, HSTS en producción, `X-Content-Type-Options`,
+  `frame-ancestors 'none'`. En el frontend, CSP con nonces en la Fase 10 (Next.js inyecta scripts
+  inline que requieren nonce por request).
+- Log de auditoría append-only (`audit_log`) de eventos de seguridad; los intentos de login
+  fallidos se registran en una transacción independiente.
 - Contenedores non-root, filesystem read-only donde sea posible, secretos sólo por entorno.
 - **Código de usuario**: no se ejecuta en el MVP. Diseño futuro
   ([ADR-0002](docs/adr/0002-strategy-representation.md)): runtime aislado por job (contenedor
